@@ -1,0 +1,266 @@
+#lang racket
+; Bobocu Alexandra-Florentina, 321CA
+
+(provide (all-defined-out))
+
+;; Același arbore de TPP obținut în etapa 1 prin aplicarea
+;; transformărilor T1, T2, T3 poate fi generat folosind 
+;; tupluri GH (Gopal-Hemachandra).
+;;
+;; Pentru o pereche oarecare (g, e), secvența GH este:
+;;    g, e, g + e, g + 2e, 2g + 3e, 3g + 5e ...
+;; Pentru (g, e) = (1, 1) obținem șirul lui Fibonacci.
+;;
+;; Primele 4 numere din secvență formează cvartetul GH:
+;;    (g, e, f, h) = (g, e, g + e, g + 2e)
+;;
+;; Pentru un asemenea cvartet (g, e, f, h), definim:
+;;    a = gh,   b = 2ef,   c = e^2 + f^2
+;; și putem demonstra că (a,b,c) este un triplet pitagoreic.
+;;
+;; (a,b,c) este chiar TPP, dacă adăugăm condițiile:
+;;    g, e, f, h prime între ele
+;;    g impar
+;; însă nu veți avea nevoie să faceți asemenea verificări,
+;; întrucât avem la dispoziție un algoritm care generează
+;; exclusiv TPP.
+;;
+;; Acest algoritm este foarte asemănător cu cel din etapa
+;; anterioară, cu următoarele diferențe:
+;;  - nodurile din arbore sunt cvartete, nu triplete
+;;    (din cvartet obținem un TPP conform formulelor)
+;;    (ex: (1,1,2,3) => (1*3,2*1*2,1^2+2^2) = (3,4,5))
+;;  - obținem următoarea generație de cvartete folosind 
+;;    trei transformări Q1, Q2, Q3 pentru cvartete, în loc
+;;    de T1, T2, T3 care lucrau cu triplete
+;; 
+;; Q1(g,e,f,h) = (h,e,h+e,h+2e)
+;; Q2(g,e,f,h) = (h,f,h+f,h+2f) 
+;; Q3(g,e,f,h) = (g,f,g+f,g+2f)
+;;
+;; Arborele rezultat arată astfel:
+;;
+;;                        (1,1,2,3)
+;;              ______________|______________
+;;             |              |              |
+;;         (3,1,4,5)      (3,2,5,7)      (1,2,3,5)
+;;       ______|______  ______|______  ______|______
+;;      |      |      ||      |      ||      |      |
+;;  (5,1,6,7) .........................................
+
+;; Definim funcțiile Q1, Q2, Q3:
+(define (Q1 g e f h) (list h e (+ h e) (+ h e e)))
+(define (Q2 g e f h) (list h f (+ h f) (+ h f f)))
+(define (Q3 g e f h) (list g f (+ g f) (+ g f f)))
+
+;; Vom refolosi matricile T1, T2, T3:
+(define T1 '((-1 2 2) (-2 1 2) (-2 2 3)))
+(define T2 '( (1 2 2)  (2 1 2)  (2 2 3)))
+(define T3 '((1 -2 2) (2 -1 2) (2 -2 3)))
+
+
+; Reimplementați funcția care calculează produsul scalar
+; a doi vectori X și Y, astfel încât să nu folosiți
+; recursivitate explicită (ci funcționale).
+; Memento:
+; Se garantează că X și Y au aceeași lungime.
+; Ex: (-1,2,2)·(3,4,5) = -3 + 8 + 10 = 15
+
+; In urma folosirii functionalei map, obtin o noua lista ce are pe fiecare
+; pozitie rezultatul inmultirii elementelor din listele X si Y de pe pozitia
+; respectiva. Folosesc functionala apply pentru a obtine un numar, si anume suma
+; elementelor din noua lista obtinuta.
+(define (dot-product X Y)
+  (apply + (map * X Y)))
+
+
+; Reimplementați funcția care calculează produsul dintre
+; o matrice M și un vector V, astfel încât să nu folosiți
+; recursivitate explicită (ci funcționale).
+; Memento:
+; Se garantează că M și V au dimensiuni compatibile.
+; Ex: |-1 2 2| |3|   |15|
+;     |-2 1 2|·|4| = | 8|
+;     |-2 2 3| |5|   |17|
+
+; Folosesc o functie auxiliara care imi transforma o functie
+; care primeste mai multi parametrii deodata intr-una care
+; primeste parametrii pe rand.
+(define (uncurry->curry f)
+  (λ(x) (λ(y) (f x y))))
+
+; Functia dot-product este uncurry, deci aplic functia auxiliara
+; pentru a o transforma intr-una curry care primeste doar un parametru,
+; si anume vectorul V.
+; Primesc pe rand fiecare lista din matricea M, care este o lista de liste.
+; Folosind functionala map, aplic operatia dot-product sub forma curry pe fiecare
+; element din lista M, deci fac corespunzator produsul scalar intre lista V si fiecare
+; lista din lista de liste M.
+(define (multiply M V)
+  (map ((uncurry->curry dot-product) V) M))
+
+
+; Aduceți aici (nu sunt necesare modificări) implementarea
+; funcției get-transformations de la etapa 1.
+; Această funcție nu este re-punctată de checker, însă este
+; necesară implementărilor ulterioare.
+(define (get-transformations-helper n result)
+  (cond
+      ((equal? n 1) result)
+      ((equal? (modulo (add1 n) 3) 0) (get-transformations-helper (quotient (add1 n) 3) (cons 1 result)))
+      ((equal? (modulo (add1 n) 3) 1) (get-transformations-helper (quotient (add1 n) 3) (cons 2 result)))
+      (else (get-transformations-helper (quotient (add1 n) 3) (cons 3 result)))))
+
+ (define (get-transformations n)
+  (get-transformations-helper n '()))
+
+
+; În etapa anterioară ați implementat o funcție care primea
+; o listă Ts de tipul celei întoarsă de get-transformations
+; și un triplet de start ppt și întorcea tripletul rezultat
+; în urma aplicării transformărilor din Ts asupra ppt.
+; Acum dorim să generalizăm acest proces, astfel încât să
+; putem reutiliza funcția atât pentru transformările de tip
+; T1, T2, T3, cât și pentru cele de tip Q1, Q2, Q3.
+; În acest scop operăm următoarele modificări:
+;  - primul parametru este o listă de funcții Fs
+;    (în loc de o listă numerică Ts)
+;  - al doilea parametru reprezintă un tuplu oarecare
+;    (aici modificarea este doar "cu numele", fără a schimba
+;    funcționalitatea, este responsabilitatea funcțiilor din
+;    Fs să primească parametri de tipul lui tuple)
+; Nu folosiți recursivitate explicită (ci funcționale).
+
+; Functie ajutatoare ce reprezinta aplicatia unei functii f
+; asupra unui parametru x => f(x).
+(define (compunere f) (λ(x) (f x)))
+
+; Folosesc o functie auxiliara care imi transforma o functie
+; care primeste parametrii pe rand intr-una care
+; primeste parametrii deodata.
+(define (curry->uncurry f)
+  (λ(x y) ((f x) y)))
+
+(define (apply-functional-transformations Fs tuple)
+  ; Tin cont ca foldl primeste o functie binara, astfel ma folosesc de functia
+  ; auxiliara construita mai sus.
+  ; Acumulatorul este reprezentat de tuplu.
+  ; Cu ajutorul functionalei foldl, extrag de la stanga la dreapta functiile din Fs
+  ; si le aplic peste acumulator, folosind functia ajutatoare compunere.
+  (foldl (curry->uncurry compunere) tuple Fs))
+
+
+; Tot în spiritul abstractizării, veți defini o nouă funcție
+; get-nth-tuple, care calculează al n-lea tuplu din arbore. 
+; Această funcție va putea fi folosită:
+;  - și pentru arborele de triplete (caz în care plecăm de la
+;    (3,4,5) și avansăm via T1, T2, T3)
+;  - și pentru arborele de cvartete (caz în care plecăm de la
+;    (1,1,2,3) și avansăm via Q1, Q2, Q3)
+; Rezultă că, în afară de parametrul n, funcția va trebui să
+; primească un tuplu de start și 3 funcții de transformare a
+; tuplurilor.
+; Definiți get-nth-tuple astfel încât să o puteți reutiliza
+; cu minim de efort pentru a defini funcțiile următoare:
+;    get-nth-ppt-from-matrix-transformations
+;    get-nth-quadruple
+; (Hint: funcții curry)
+; În define-ul de mai jos nu am precizat parametrii funcției
+; get-nth-tuple pentru ca voi înșivă să decideți care este
+; modul optim în care funcția să își primească parametrii.
+; Din acest motiv checker-ul nu testează separat această funcție,
+; dar asistentul va observa dacă implementarea respectă cerința.
+
+; Am definit functii care aplica transformarile T1, T2 si T3.
+(define (FT1 V) (multiply T1 V))
+(define (FT2 V) (multiply T2 V))
+(define (FT3 V) (multiply T3 V))
+
+; Pe baza unei liste numerice de transformari obtinute in urma apelarii
+; functiei get-transformations implementata la etapa 1, construiesc o
+; noua lista in care adaug functiile FT1, FT2 si FT3 definite mai sus.
+(define (convert-transformations-for-triplets-helper n L result)
+  (cond
+     ((null? L) (reverse result))
+     ((equal? (car L) 1) (convert-transformations-for-triplets-helper n (cdr L) (cons FT1 result)))
+     ((equal? (car L) 2) (convert-transformations-for-triplets-helper n (cdr L) (cons FT2 result)))
+     (else (convert-transformations-for-triplets-helper n (cdr L) (cons FT3 result)))))
+
+(define (convert-transformations-for-triplets n)
+  (convert-transformations-for-triplets-helper n (get-transformations n) '()))
+
+; Am definit functii care aplica transformarile Q1, Q2 si Q3.
+(define (FQ1 V) (apply Q1 V))
+(define (FQ2 V) (apply Q2 V))
+(define (FQ3 V) (apply Q3 V))
+
+; Functie similara ca cea pentru triplete, doar ca adaug functiile
+; FQ1, FQ2 si FQ3 definite mai sus.
+(define (convert-transformations-for-tuplets-helper n L result)
+  (cond
+     ((null? L) (reverse result))
+     ((equal? (car L) 1) (convert-transformations-for-tuplets-helper n (cdr L) (cons FQ1 result)))
+     ((equal? (car L) 2) (convert-transformations-for-tuplets-helper n (cdr L) (cons FQ2 result)))
+     (else (convert-transformations-for-tuplets-helper n (cdr L) (cons FQ3 result)))))
+
+(define (convert-transformations-for-tuplets n)
+  (convert-transformations-for-tuplets-helper n (get-transformations n) '()))
+
+; Ca parametrii am ales sa pornesc de la o lista de functii si un
+; tuplu initial.
+(define (get-nth-tuple Fs tuple)
+  (apply-functional-transformations Fs tuple))
+
+
+; Din get-nth-tuple, obțineți în cel mai succint mod posibil
+; (hint: aplicare parțială) o funcție care calculează al n-lea
+; TPP din arbore, folosind transformările pe triplete.
+
+; Pornesc de la tripletul initial '(3 4 5) si aplic transformarile
+; descrise in lista obtinuta in urma apelarii functiei
+; convert-transformations-for-triplets pentru un n dat.
+(define (get-nth-ppt-from-matrix-transformations n)
+  (get-nth-tuple (convert-transformations-for-triplets n) '(3 4 5)))
+
+
+; Din get-nth-tuple, obțineți în cel mai succint mod posibil 
+; (hint: aplicare parțială) o funcție care calculează al n-lea 
+; cvartet din arbore, folosind transformările pe cvartete.
+
+; Pornesc de la tripletul initial '(1 1 2 3) si aplic transformarile
+; descrise in lista obtinuta in urma apelarii functiei
+; convert-transformations-for-tuplets pentru un n dat.
+(define (get-nth-quadruple n)
+  (get-nth-tuple (convert-transformations-for-tuplets n) '(1 1 2 3)))
+ 
+
+; Folosiți rezultatul întors de get-nth-quadruple pentru a 
+; obține al n-lea TPP din arbore.
+
+; Functie auxiliara pentru eliminarea duplicatelor dintr-o lista.
+(define (remove-duplicates L)
+  (reverse (foldl (λ (x acc)
+                    (if (member x acc) acc
+                        (cons x acc)))
+                  '()
+                  L)))
+
+; Am definit functii separate pentru regulile de calcul specifice
+; convertirii unui cvartet intr-un TPP.
+(define sum-square (λ(x y) (+ (sqr x) (sqr y))))
+(define *2product (λ(x y) (* 2 x y)))
+(define product (λ(x y) (* x y)))
+
+; Functia primeste ca parametru un numar n si construieste o noua lista care reprezinta TPP-ul final.
+; Am considerat 2 cvartete: pe cel original si pe cel inversat -> (g, e, f, h) - (h, f, e, g).
+; Pentru aceste 2 cvartete reprezentate sub forma de liste, aplic functionala map, pentru ca
+; functiile definite mai sus sa fie aplicate asupra elementelor din cele 2 cvartete de pe aceeasi
+; pozitie. De exemplu, pentru functia product, as avea (g*h, e*f, f*e, h*g). Cum in lista am si
+; elemente care se repeta, folosesc functia auxiliara remove-duplicates. Identific in listele
+; obtinute rezultatele de interes cu ajutorul lui car si cdr, iar cu ajutorul lui append si cons
+; construiesc rezultatul final.
+(define (get-nth-ppt-from-GH-quadruples n)
+  (cons (car (remove-duplicates (map product (get-nth-quadruple n) (reverse (get-nth-quadruple n)))))
+      (append
+       (cdr (remove-duplicates (map *2product (get-nth-quadruple n) (reverse (get-nth-quadruple n)))))
+       (cdr (remove-duplicates (map sum-square (get-nth-quadruple n) (reverse (get-nth-quadruple n))))))))
